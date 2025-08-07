@@ -77,31 +77,40 @@ julia> plot_signal(raw)
 """
 function signal_to_raw_data(
     signal, seq;
-    phantom_name="Phantom", sys=Scanner(), sim_params=Dict{String,Any}(), ndims=2
+    phantom_name="Phantom", sys=Scanner(), sim_params=Dict{String,Any}(), ndims=0
 )
-    #Number of samples and FOV
-    _, ktraj = get_kspace(seq) #kspace information
+    # Number of samples and FOV
+    _, ktraj = get_kspace(seq) # k-space information
     mink = minimum(ktraj, dims=1)
     maxk = maximum(ktraj, dims=1)
     Wk = maxk .- mink
-    Δx = 1 ./ Wk[1:2] #[m] Only x-y
+    idxs_zero = findall(iszero, Wk)  # check for zeros
+    @debug Wk idxs_zero
+    Wk[idxs_zero] .= 1e6    # replace zero elements
+    Δx = 1 ./ Wk[1:3]       # [m] x-y-z
     Nx = get(seq.DEF, "Nx", 1)
     Ny = get(seq.DEF, "Ny", 1)
     Nz = get(seq.DEF, "Nz", 1)
+    Ns = get(seq.DEF, "Ns", 1)  # number of slices
+    Nd_seq = (Nx > 1) + (Ny > 1) + (Nz > 1)
+    if ndims < 0 if ndims != Nd_seq; @warn("Seqfile is $Nd_seq dimensional but recon is $ndims."); end end
     if haskey(seq.DEF, "FOV")
-        FOVx, FOVy, _ = seq.DEF["FOV"] #[m]
-        if FOVx > 1 FOVx *= 1e-3 end #mm to m, older versions of Pulseq saved FOV in mm
-        if FOVy > 1 FOVy *= 1e-3 end #mm to m, older versions of Pulseq saved FOV in mm
+        FOVx, FOVy, FOVz = seq.DEF["FOV"] #[m]
+        if FOVx > 1 FOVx *= 1e-3 end # mm to m, older versions of Pulseq saved FOV in mm
+        if FOVy > 1 FOVy *= 1e-3 end # mm to m, older versions of Pulseq saved FOV in mm
+        if FOVz > 1 FOVz *= 1e-3 end # mm to m, older versions of Pulseq saved FOV in mm
         Nx = round(Int64, FOVx / Δx[1])
         Ny = round(Int64, FOVy / Δx[2])
+        Nz = round(Int64, FOVz / Δx[3])
     else
         FOVx = Nx * Δx[1]
         FOVy = Ny * Δx[2]
+        FOVz = Nz * Δx[3]
     end
-    #It needs to be transposed for the raw data
+    # It needs to be transposed for the raw data
     ktraj = maximum(2*abs.(ktraj[:])) == 0 ? transpose(ktraj) : transpose(ktraj)./ maximum(2*abs.(ktraj[:]))
 
-    #First we define the ISMRMRD data XML header
+    # First we define the ISMRMRD data XML header
     #userParameters <- sim_params
     for (key, val) in sim_params
         if typeof(val) <: Integer #Fixes problem with bools
@@ -124,17 +133,17 @@ function signal_to_raw_data(
         # "trajectoryDescription"          => Dict{String, Any}("comment"=>""), #You can put wathever you want here: comment, bandwidth, MaxGradient_G_per_cm, MaxSlewRate_G_per_cm_per_s, interleaves, etc
         #encoding
         #   encodedSpace
-        "encodedSize"                    => [Nx, Ny, 1],                        #encodedSpace>matrixSize
-        "encodedFOV"                     => Float32.([FOVx, FOVy, 1e-3]*1e3),   #encodedSpace>fieldOfView_mm
+        "encodedSize"                    => [Nx, Ny, Nz],                       #encodedSpace>matrixSize
+        "encodedFOV"                     => Float32.([FOVx, FOVy, FOVz]*1e3),   #encodedSpace>fieldOfView_mm
         #   reconSpace
-        "reconSize"                      => [Nx+Nx%2, Ny+Ny%2, 1],              #reconSpace>matrixSize
-        "reconFOV"                       => Float32.([FOVx, FOVy, 1e-3]*1e3),   #reconSpace>fieldOfView_mm
+        "reconSize"                      => [Nx, Ny, Nz],                       #reconSpace>matrixSize
+        "reconFOV"                       => Float32.([FOVx, FOVy, FOVz]*1e3),   #reconSpace>fieldOfView_mm
         #encodingLimits
         "enc_lim_kspace_encoding_step_0" => Limit(0, Nx-1, ceil(Int, Nx / 2)),  #min, max, center, e.g. phase encoding line number
         "enc_lim_kspace_encoding_step_1" => Limit(0, Ny-1, ceil(Int, Ny / 2)),  #min, max, center, e.g. partition encoding number
-        "enc_lim_kspace_encoding_step_2" => Limit(0, 0, 0),                     #min, max, center, e.g. partition encoding number
+        "enc_lim_kspace_encoding_step_2" => Limit(0, Nz-1, ceil(Int, Nz / 2)),  #min, max, center, e.g. partition encoding number
         "enc_lim_average"                => Limit(0, 0, 0),                     #min, max, center, e.g. signal average number
-        "enc_lim_slice"                  => Limit(0, 0, 0),                     #min, max, center, e.g. imaging slice number
+        "enc_lim_slice"                  => Limit(0, Ns-1, ceil(Int, Ns / 2)),  #min, max, center, e.g. imaging slice number
         "enc_lim_contrast"               => Limit(0, 0, 0),                     #min, max, center, e.g. echo number in multi-echo
         "enc_lim_phase"                  => Limit(0, 0, 0),                     #min, max, center, e.g. cardiac phase number
         "enc_lim_repetition"             => Limit(0, 0, 0),                     #min, max, center, e.g. dynamic number for dynamic scanning
@@ -154,8 +163,10 @@ function signal_to_raw_data(
     profiles = Profile[]
     t_acq = get_adc_sampling_times(seq)
     Nadcs = sum(is_ADC_on.(seq))
-    NadcsPerImage = max(floor(Int, Nadcs / Nz), 1)
+    NadcsPerSlice = floor(Int, Nadcs / Ns) + 1
+    NadcsPerPE1 = floor(Int, Nadcs / Nz) + 1
     scan_counter = 0
+    ns = 0
     nz = 0
     current = 1
     for s = seq #Iterate over sequence blocks
@@ -196,9 +207,9 @@ function signal_to_raw_data(
                 Float32.((0, 0, 0)), #patient_table_position float32x3: Patient table off-center
                 EncodingCounters( #idx uint16x17: Encoding loop counters
                     UInt16(scan_counter), #kspace_encode_step_1 uint16: e.g. phase encoding line number
-                    UInt16(0), #kspace_encode_step_2 uint16: e.g. partition encoding number
+                    UInt16(nz), #kspace_encode_step_2 uint16: e.g. partition encoding number
                     UInt16(0), #average uint16: e.g. signal average number
-                    UInt16(nz), #slice uint16: e.g. imaging slice number
+                    UInt16(ns), #slice uint16: e.g. imaging slice number
                     UInt16(0), #contrast uint16: e.g. echo number in multi-echo
                     UInt16(0), #phase uint16: e.g. cardiac phase number
                     UInt16(0), #repetition uint16: e.g. dynamic number for dynamic scanning
@@ -218,8 +229,12 @@ function signal_to_raw_data(
             #Update counters
             scan_counter += 1
             current += Nsamples
-            if scan_counter % NadcsPerImage == 0 #For now only Nz is considered
-                nz += 1 #another image
+            if scan_counter % NadcsPerSlice == 0 
+                ns += 1 #another slice
+                scan_counter = 0 #reset counter
+            end
+            if scan_counter % NadcsPerPE1 == 0 
+                nz += 1 
                 scan_counter = 0 #reset counter
             end
         end
