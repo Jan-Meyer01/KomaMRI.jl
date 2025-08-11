@@ -468,9 +468,15 @@ function read_seq(filename)
     seq.DEF["PulseqVersion"] = version_combined
     seq.DEF["signature"] = signature
     # Guessing recon dimensions
-    seq.DEF["Nx"] = get(seq.DEF, "Nx", maximum(adc.N for adc = seq.ADC))
-    seq.DEF["Nz"] = get(seq.DEF, "Nz", length(unique(seq.RF.Δf)))
-    seq.DEF["Ny"] = get(seq.DEF, "Ny", sum(map(is_ADC_on, seq)) ÷ seq.DEF["Nz"])
+    if isnothing(seq.DEF["Nx"])
+        seq.DEF["Nx"] = get(seq.DEF, "Nx", maximum(adc.N for adc = seq.ADC))
+    end    
+    if isnothing(seq.DEF["Ny"])
+        seq.DEF["Ny"] = get(seq.DEF, "Ny", sum(map(is_ADC_on, seq)) ÷ seq.DEF["Nz"])
+    end    
+    if isnothing(seq.DEF["Nz"])
+        seq.DEF["Nz"] = get(seq.DEF, "Nz", length(unique(seq.RF.Δf)))
+    end
     #Koma sequence
     return seq
 end
