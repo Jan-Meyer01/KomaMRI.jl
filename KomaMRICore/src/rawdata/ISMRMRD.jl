@@ -88,10 +88,11 @@ function signal_to_raw_data(
     @debug Wk idxs_zero
     Wk[idxs_zero] .= 1.0e6  # replace zero elements
     Δx = 1 ./ Wk[1:3]       # [m] x-y-z
-    Nx = get(seq.DEF, "Nx", 1)
-    Ny = get(seq.DEF, "Ny", 1)
-    Nz = get(seq.DEF, "Nz", 1)
-    Ns = get(seq.DEF, "Ns", 1)  # number of slices
+    # read in and round resolution to integers to avoid errors later
+    Nx = round(Int64, get(seq.DEF, "Nx", 1))
+    Ny = round(Int64, get(seq.DEF, "Ny", 1))
+    Nz = round(Int64, get(seq.DEF, "Nz", 1))
+    Ns = round(Int64, get(seq.DEF, "Ns", 1))  # number of slices
     Nd_seq = (Nx > 1) + (Ny > 1) + (Nz > 1)
     if ndims < 0 if ndims != Nd_seq; @warn("Seqfile is $Nd_seq dimensional but recon is $ndims."); end end
     # In case there is a FOV field, convert it to m
@@ -105,10 +106,6 @@ function signal_to_raw_data(
         if Ny == 1 Ny = ceil(Int64, FOVy / Δx[2]) end
         if Nz == 1 Nz = ceil(Int64, FOVz / Δx[3]) end
     else
-        # round resolution to integer to avoid errors
-        Nx = round(Int64, Nx)
-        Ny = round(Int64, Ny)
-        Nz = round(Int64, Nz)
         # estimate FOV
         FOVx = Nx * Δx[1]
         FOVy = Ny * Δx[2]
