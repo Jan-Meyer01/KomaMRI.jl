@@ -113,7 +113,9 @@ function setup_phantom(; phantom_mode="2D")
 
     # Print information and get the default Phantom struct
     @info "Loaded `Phantom` to `obj_ui[]`"
-    obj = phantom_mode == "3D" ? brain_phantom3D() : brain_phantom2D()
+    path_2D = "/home/janmeyer/Pre-Processing/processed_data/travelling_head/Bonn_Skyra_3T_LowRes/sub-phy001/ses-001/phantoms_koma/sub-phy001_ses-001_phantom_koma_slice150.phantom"
+    path_3D = "/home/janmeyer/Pre-Processing/processed_data/travelling_head/Bonn_Skyra_3T_LowRes/sub-phy001/ses-001/phantoms_koma/sub-phy001_ses-001_phantom_koma_vol.phantom"
+    obj = phantom_mode == "3D" ? read_phantom(path_3D) : read_phantom(path_2D)
     obj.Δw .= 0 # Removes off-resonance
 
     # Return the default Phantom struct
@@ -129,15 +131,15 @@ function setup_raw()
     raw = RawAcquisitionData(
         Dict(
             "systemVendor" => "",
-            "encodedSize" => [2, 2, 1],
-            "reconSize" => [2, 2, 1],
+            "encodedSize" => [2, 2, 2],
+            "reconSize" => [2, 2, 2],
             "number_of_samples" => 4,
-            "encodedFOV" => [100.0, 100.0, 1],
+            "encodedFOV" => [100.0, 100.0, 100.0],
             "trajectory" => "other",
         ),
         [
             KomaMRICore.Profile(
-                AcquisitionHeader(; trajectory_dimensions=2, sample_time_us=1),
+                AcquisitionHeader(; trajectory_dimensions=3, sample_time_us=1),
                 [0.0 0.0 1 1; 0 1 1 1] ./ 2,
                 reshape([0.0; 0im; 0; 0], 4, 1),
             ),
