@@ -335,10 +335,10 @@ function EPI_example(; sys=Scanner())
     B1 = sys.B1;
     durRF = π/2/(2π*γ*B1)
     EX = PulseDesigner.RF_hard(B1, durRF, sys; G=[0,0,0])
-    N = 101
+    N = 256 #101
     FOV = 23e-2
     EPI = PulseDesigner.EPI(FOV, N, sys)
-    TE = 30e-3
+    TE = 98e-3 #30e-3
     d1 = TE-dur(EPI)/2-dur(EX)
     if d1 > 0 DELAY = Delay(d1) end
     seq = d1 > 0 ? EX + DELAY + EPI : EX + EPI

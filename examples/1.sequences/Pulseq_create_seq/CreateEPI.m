@@ -1,11 +1,9 @@
-cd("/home/ccp/Documents/pulseq-1.4.0/matlab/")
-%%
 % this is a demo low-performance EPI sequence
 % which doesn"t use ramp-samping. It is only good for educational purposes
 
 seq=mr.Sequence();              % Create a new sequence object
-fov=230e-3; Nx=101; Ny=100;     % Define FOV and resolution
-thickness=  2e-2; %1/3*1e-2;           % slice thinckness
+fov=230e-3; Nx=228; Ny=232;     % Define FOV and resolution
+thickness=  2e-2;               % slice thinckness
 slice_gap = 2/3*1e-2;           % gap between slices
 Nslices=1;
 

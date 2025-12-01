@@ -1,7 +1,7 @@
 % https://pulseq.github.io/writeEpiSpinEcho.html
 close all
 seq=mr.Sequence();              % Create a new sequence object
-fov=230e-3; Nx=100; Ny=100;       % Define FOV and resolution
+fov=230e-3; Nx=228; Ny=232;       % Define FOV and resolution
 
 % Set system limits
 lims = mr.opts('MaxGrad', 32, 'GradUnit', 'mT/m',...
